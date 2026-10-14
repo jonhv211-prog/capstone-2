@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JALA-REBEL: Hackeando la Estrella de la Muerte</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        pixel: ['"Press Start 2P"', 'monospace'],
+                        mono: ['"Share Tech Mono"', 'monospace']
+                    },
+                    colors: {
+                        rebelGreen: '#00ff66',
+                        rebelBlue: '#00d4ff',
+                        imperialRed: '#ff2a2a',
+                        terminalBg: '#080c14'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --saber-hue: 135; /* Inicia en verde (~135deg) y oscila a azul (~205deg) */
+            --saber-color: hsl(var(--saber-hue), 100%, 55%);
+            --saber-glow: hsla(var(--saber-hue), 100%, 55%, 0.45);
+        }
+
+        body {
+            background-color: #030712;
+            color: #e2e8f0;
+            overflow-x: hidden;
+            user-select: none;
+            image-rendering: pixelated;
+        }
+
+        /* Efecto scanline y viñeta de terminal rebelde */
+        .crt-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+                        radial-gradient(circle, rgba(0,0,0,0) 65%, rgba(0,0,0,0.75) 100%);
+            background-size: 100% 4px, 100% 100%;
+            z-index: 40;
+        }
+
+        /* Bordes estilo Pixel Art */
+        .pixel-box {
+            border: 4px solid var(--saber-color);
+            box-shadow: 0 0 15px var(--saber-glow), inset 0 0 10px rgba(0, 0, 0, 0.8);
+            position: relative;
+            background: rgba(8, 14, 26, 0.88);
+            backdrop-filter: blur(4px);
+        }
+
+        .pixel-btn {
+            position: relative;
+            box-shadow: 0 5px 0 #000;
+            transition: all 0.1s ease;
+            cursor: pointer;
+        }
+
+        .pixel-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 0 #000, 0 0 12px var(--saber-glow);
+        }
+
+        .pixel-btn:active:not(:disabled) {
+            transform: translateY(3px);
+            box-shadow: 0 2px 0 #000;
+        }
+
+        .pixel-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            filter: grayscale(0.8);
+        }
+
+        /* Globito pixel para el Jedi */
+        .pixel-speech {
+            position: relative;
+            background: #0f172a;
+            border: 3px solid var(--saber-color);
+            box-shadow: 0 0 10px var(--saber-glow);
+        }
+
+        .pixel-speech::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            right: 40px;
+            width: 0;
+            height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-top: 10px solid var(--saber-color);
+        }
+
+        /* Scrollbar retro */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #050811;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--saber-color);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="min-h-screen relative font-mono flex flex-col justify-between">
+    <div class="crt-overlay"></div>
+
+    <canvas id="spaceCanvas" class="fixed inset-0 w-full h-full -z-10"></canvas>
+
+    <!-- Barra de Estado Superior / Encabezado de la Misión Rebelde -->
+    <header class="p-3 sm:p-4 border-b-2 border-emerald-500/40 bg-slate-950/80 backdrop-blur z-20">
+        <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <span class="inline-block w-4 h-4 rounded-full animate-ping bg-emerald-400"></span>
+                <div>
+                    <h1 class="font-pixel text-xs sm:text-sm tracking-wider text-emerald-400 flex items-center gap-2">
+                        <span>★ JALA-REBEL: NÚCLEO IMPERIAL ★</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Terminal de Hackeo Matemático • Jala University</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 text-xs">
+                <div class="flex items-center gap-2 px-3 py-1 bg-slate-900 border border-slate-700 rounded-sm">
+                    <span class="text-slate-400 font-pixel text-[10px]">SABLE:</span>
+                    <span id="saberIndicator" class="font-pixel text-[10px] text-emerald-400 font-bold transition-colors">VERDE JEDI</span>
+                </div>
+                <button id="audioToggle" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-emerald-300 font-pixel text-[10px] flex items-center gap-1">
+                    <span id="audioIcon">🔊</span> <span id="audioText">SONIDO: ON</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto w-full p-3 sm:p-5 flex-1 flex flex-col gap-4 z-10">
+        <!-- Panel Superior: Desencriptador y Combinatoria Matemática -->
+        <section class="pixel-box p-4 rounded-md">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+                <!-- Monitor de Contraseña Descifrada -->
+                <div class="lg:col-span-5 flex flex-col items-center sm:items-start">
+                    <div class="flex items-center justify-between w-full mb-2">
+                        <span class="font-pixel text-[10px] text-yellow-400">CLAVE CIFRADA (n=8):</span>
+                        <span id="stageCounter" class="font-pixel text-[10px] text-cyan-300">FIREWALL 1/8</span>
+                    </div>
+                    <div id="passwordDisplay" class="flex gap-1.5 sm:gap-2 justify-center py-2 px-3 bg-black/60 border border-slate-700 rounded w-full">
+                        <!-- Ranuras de contraseña inyectadas dinámicamente -->
+                    </div>
+                </div>
+
+                <!-- Monitor de Fuerza Bruta y Reducción Exponencial -->
+                <div class="lg:col-span-7 bg-black/40 border border-slate-800 p-3 rounded text-xs space-y-2">
+                    <div class="flex justify-between items-center text-slate-300 font-pixel text-[9px] sm:text-[10px]">
+                        <span>POSIBILIDADES RESTANTES:</span>
+                        <span id="calcFormula" class="text-yellow-300 font-mono">1 · 36^(8 - k)</span>
+                    </div>
+                    <div class="flex items-baseline justify-between flex-wrap gap-2">
+                        <div id="possibilitiesCount" class="font-pixel text-sm sm:text-base text-emerald-400 tracking-tight">
+                            2,821,109,907,456
+                        </div>
+                        <div id="reductionPercent" class="text-[11px] text-cyan-400 bg-cyan-950/60 px-2 py-0.5 border border-cyan-800 rounded font-pixel">
+                            COLAPSO: 0.00%
+                        </div>
+                    </div>
+                    <!-- Barra de penetración de Firewall -->
+                    <div class="w-full bg-slate-900 h-3.5 border border-slate-700 p-0.5 rounded-sm">
+                        <div id="hackProgressBar" class="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-500 w-0"></div>
+                    </div>
+                    <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+                        <span>Espacio inicial: 36^8 (Alfabeto A-Z, 0-9)</span>
+                        <span id="shieldIntegrity">Escudos Imperiales: 100%</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Consola Central: Firewalls Imperiales de Matemáticas Discretas -->
+        <section class="pixel-box p-4 sm:p-6 rounded-md flex-1 flex flex-col justify-between">
+            <div>
+                <!-- Encabezado de la Pregunta / Firewall -->
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3 mb-4">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2 py-1 bg-red-950 text-red-400 border border-red-800 font-pixel text-[9px] animate-pulse">
+                            FIREWALL IMPERIAL
+                        </span>
+                        <span id="questionCategory" class="text-cyan-300 font-pixel text-[10px]">
+                            INDUCCIÓN MATEMÁTICA
+                        </span>
+                    </div>
+                    <span id="questionSource" class="text-[11px] text-slate-400">
+                        Protocolo Rebelde • MATH-112
+                    </span>
+                </div>
+
+                <!-- Enunciado de la Pregunta Teórica -->
+                <div id="questionPrompt" class="text-sm sm:text-base leading-relaxed text-slate-100 font-mono bg-slate-950/60 p-4 border border-slate-800 rounded-md mb-5">
+                    Cargando coordenadas del núcleo...
+                </div>
+
+                <!-- Opciones de Selección -->
+                <div id="optionsContainer" class="grid grid-cols-1 gap-3 font-mono text-xs sm:text-sm">
+                    <!-- Opciones inyectadas por JS -->
+                </div>
+            </div>
+
+            <!-- Panel de Retroalimentación Teórica (Explicación + Fórmula) -->
+            <div id="feedbackPanel" class="mt-5 hidden p-4 border rounded bg-slate-950/90 transition-all">
+                <div class="flex items-center gap-2 mb-2 font-pixel text-xs" id="feedbackTitle">
+                    <span>⚡ FIREWALL VULNERADO CON ÉXITO</span>
+                </div>
+                <p id="feedbackExplanation" class="text-xs sm:text-sm text-slate-300 leading-normal mb-2"></p>
+                <div class="flex flex-wrap items-center gap-2 p-2 bg-black/70 border border-slate-800 rounded">
+                    <span class="font-pixel text-[9px] text-yellow-400">FÓRMULA / TEOREMA APLICADO:</span>
+                    <span id="feedbackFormula" class="font-mono text-emerald-300 text-xs font-bold"></span>
+                </div>
+            </div>
+
+            <!-- Barra de Avance Manual (No avanza automáticamente) -->
+            <div class="mt-5 pt-3 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+                <div id="statusMessage" class="text-xs text-slate-400 font-mono">
+                    Selecciona la hipótesis o axioma correcto para sobrecargar el cortafuegos.
+                </div>
+                <button id="nextQuestionBtn" disabled class="pixel-btn px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 text-slate-950 font-pixel text-xs tracking-wider border-2 border-emerald-300 disabled:border-slate-700 rounded transition-all">
+                    SIGUIENTE FIREWALL &gt;&gt;
+                </button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Jedi Programador Pixel Art (Inferior Derecha) -->
+    <aside class="fixed bottom-2 right-2 sm:bottom-4 sm:right-4 z-30 flex flex-col items-end pointer-events-none">
+        <!-- Bocadillo de diálogo del Jedi -->
+        <div id="jediSpeech" class="pixel-speech p-2 sm:p-3 rounded mb-2 max-w-[200px] sm:max-w-[260px] text-[10px] sm:text-xs font-pixel text-cyan-200 pointer-events-auto">
+            "Siento una perturbación en los servidores del Imperio..."
+        </div>
+        <!-- Canvas del Jedi Pixel Art -->
+        <div class="relative w-28 h-28 sm:w-36 sm:h-36 pointer-events-auto">
+            <canvas id="jediCanvas" width="144" height="144" class="w-full h-full drop-shadow-[0_0_12px_var(--saber-glow)]"></canvas>
+        </div>
+    </aside>
+
+    <!-- Modal Final: Destrucción de la Estrella de la Muerte -->
+    <div id="victoryModal" class="fixed inset-0 bg-black/95 z-50 hidden flex-col items-center justify-center p-4 overflow-y-auto">
+        <canvas id="explosionCanvas" class="w-full max-w-2xl h-80 sm:h-96 rounded-lg mb-4"></canvas>
+        <div class="max-w-xl text-center space-y-4">
+            <h2 class="font-pixel text-sm sm:text-lg text-emerald-400 animate-bounce tracking-widest leading-relaxed">
+                ¡MISIÓN COMPLETADA CON ÉXITO!
+            </h2>
+            <p class="font-pixel text-xs text-yellow-300">
+                NÚCLEO DE LA ESTRELLA DE LA MUERTE DESTRUIDO
+            </p>
+            <p class="text-xs sm:text-sm text-slate-300 font-mono leading-relaxed bg-slate-900/80 p-4 border border-emerald-500/50 rounded">
+                La Alianza Rebelde y los ingenieros de <strong class="text-cyan-300">Jala University</strong> han salvado la galaxia. 
+                El escudo deflector cayó gracias a la inducción matemática, las relaciones binarias y el cálculo combinatorio.
+            </p>
+            <div class="p-3 bg-black/80 border border-slate-700 rounded text-xs font-mono text-emerald-300">
+                <span>CONTRASEÑA DESENCRIPTADA:</span>
+                <span class="font-pixel text-base text-yellow-400 ml-2">JALAREBL</span>
+            </div>
+            <button id="restartBtn" class="pixel-btn px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-pixel text-xs border-2 border-emerald-200 rounded">
+                REINICIAR SIMULACIÓN DE COMBATE
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* Motor de Efectos de Sonido 8-bit con Web Audio API */
+        const SoundFX = {
+            ctx: null,
+            enabled: true,
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+            },
+            playLaser() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(110, now + 0.15);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            },
+            playSuccess() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [261.6, 329.6, 392.0, 523.25]; // Arpegio triunfal C-E-G-C
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+                    gain.gain.setValueAtTime(0.15, now + idx * 0.08);
+                    gain.gain.linearRampToValueAtTime(0.01, now + idx * 0.08 + 0.12);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.08);
+                    osc.stop(now + idx * 0.08 + 0.12);
+                });
+            },
+            playError() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.25);
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + 0.25);
+            },
+            playExplosion() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 1.5;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(800, now);
+                filter.frequency.exponentialRampToValueAtTime(40, now + 1.5);
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 1.5);
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            }
+        };
+
+        const QUESTIONS_DB = [
+            {
+                id: 1,
+                char: 'J',
+                category: 'PRINCIPIO DE INDUCCIÓN MATEMÁTICA',
+                prompt: 'Supongamos que el bucle de recarga de los escudos deflectores está modelado por P(n). Para corromperlo, debemos inyectar un error en la base lógica. Si logramos demostrar que el paso base es falso, ¿qué axioma de la inducción matemática estamos rompiendo para detener la secuencia?',
+                options: [
+                    'La veracidad de P(k) implica P(k+1).',
+                    'La verificación inicial de P(1) (o P(n₀)).',
+                    'La regla del producto en k.'
+                ],
+                correct: 1,
+                formula: 'Paso Base: P(1) ∧ [P(k) ⇒ P(k+1)] ⇒ ∀n P(n)',
+                explanation: 'La inducción matemática exige verificar primero la condición base P(1). Si este peldaño inicial no se cumple, el efecto dominó jamás se propaga y la recarga colapsa.'
+            },
+            {
+                id: 2,
+                char: 'A',
+                category: 'TÉCNICAS DE CONTEO Y PERMUTACIONES',
+                prompt: 'Un droide astromecánico debe crear una clave de cifrado imperial usando exactamente 3 letras diferentes (A, B, C) sin repetir ninguna. ¿Cuántas combinaciones ordenadas (permutaciones) puede crear en total?',
+                options: [
+                    '3 combinaciones.',
+                    '6 combinaciones (3!).',
+                    '9 combinaciones.'
+                ],
+                correct: 1,
+                formula: 'P(n) = n! ⇒ P(3) = 3! = 3 × 2 × 1 = 6',
+                explanation: 'Al importar el orden de colocación y no permitir la repetición de elementos, se aplica la factorial al total de símbolos: 3! = 6 formas posibles (ABC, ACB, BAC, BCA, CAB, CBA).'
+            },
+            {
+                id: 3,
+                char: 'L',
+                category: 'TEORÍA DE RELACIONES (CONECTIVIDAD)',
+                prompt: 'El paquete de datos espía debe rebotar en la red de droides astromecánicos. Para que la red acepte la transferencia como bidireccional y redundante, la relación R debe cumplir que, si el nodo x está conectado al nodo y, el nodo y debe estar conectado de vuelta a x. ¿Qué propiedad matemática define este comportamiento?',
+                options: [
+                    'Propiedad Reflexiva: ∀x ∈ A, xRx.',
+                    'Propiedad Transitiva: ∀x,y,z ∈ A, (xRy ∧ yRz) ⇒ xRz.',
+                    'Propiedad Simétrica: ∀x,y ∈ A, xRy ⇒ yRx.'
+                ],
+                correct: 2,
+                formula: '∀x, y ∈ A : (x, y) ∈ R ⟹ (y, x) ∈ R',
+                explanation: 'La propiedad simétrica garantiza que toda arista de conexión entre dos nodos sea recíproca, modelando enlaces bidireccionales en grafos y matrices simétricas.'
+            },
+            {
+                id: 4,
+                char: 'A',
+                category: 'TEORÍA DE CONJUNTOS (OPERACIONES)',
+                prompt: 'Dado el registro de transpondedores rebeldes A = {1, 2, 3} y las frecuencias imperiales detectadas B = {3, 4, 5}. ¿Cuál es el resultado de la intersección (A ∩ B) para sintonizar el canal infiltrado común?',
+                options: [
+                    '{1, 2, 3, 4, 5}',
+                    '{3}',
+                    '{1, 2, 4, 5}'
+                ],
+                correct: 1,
+                formula: 'A ∩ B = { x | x ∈ A ∧ x ∈ B } ⇒ {3}',
+                explanation: 'La intersección (∩) filtra únicamente los elementos que pertenecen a ambos conjuntos de manera simultánea; el único elemento compartido aquí es el 3.'
+            },
+            {
+                id: 5,
+                char: 'R',
+                category: 'TEORÍA DE RELACIONES (AUTO-ENLACE)',
+                prompt: 'En el cortafuegos central, la regla de comprobación de identidad establece que todo subsistema de cómputo \'x\' siempre está relacionado consigo mismo (xRx). ¿Cómo se denomina esta propiedad fundamental?',
+                options: [
+                    'Propiedad Reflexiva.',
+                    'Propiedad Antisimétrica.',
+                    'Propiedad Transitiva.'
+                ],
+                correct: 0,
+                formula: '∀x ∈ A : (x, x) ∈ R',
+                explanation: 'La propiedad reflexiva exige que todo elemento de un conjunto posea un lazo o bucle directo sobre sí mismo, representada por unos (1) en toda la diagonal principal de su matriz.'
+            },
+            {
+                id: 6,
+                char: 'E',
+                category: 'CONJUNTO POTENCIA (DIAPOSITIVAS)',
+                prompt: 'El servidor de la superestructura maneja un conjunto de n = 4 compuertas de emergencia X = {c₁, c₂, c₃, c₄}. De acuerdo con el Teorema del Conjunto Potencia ℘(X), ¿cuántas combinaciones posibles de subconjuntos de seguridad existen en total?',
+                options: [
+                    '4² = 16 subconjuntos.',
+                    '2ⁿ = 2⁴ = 16 subconjuntos (incluyendo ∅ y X).',
+                    '4! = 24 subconjuntos.'
+                ],
+                correct: 1,
+                formula: '|℘(X)| = 2ⁿ ⇒ 2⁴ = 16',
+                explanation: 'Para todo conjunto finito con n elementos, su conjunto potencia está formado exactamente por 2ⁿ subconjuntos, abarcando desde el conjunto vacío hasta el total de compuertas.'
+            },
+            {
+                id: 7,
+                char: 'B',
+                category: 'RELACIONES DE EQUIVALENCIA (DIAPOSITIVAS)',
+                prompt: 'Para descomponer la red de comunicación de la estación en clases de equivalencia [a] mutuamente disjuntas y particionar el sistema, ¿cuáles son las tres propiedades obligatorias que debe satisfacer la relación?',
+                options: [
+                    'Reflexiva, Antisimétrica y Transitiva.',
+                    'Reflexiva, Simétrica y Transitiva.',
+                    'Irreflexiva, Asimétrica y Conexa.'
+                ],
+                correct: 1,
+                formula: 'R es Equivalencia ⟺ Reflexiva ∧ Simétrica ∧ Transitiva',
+                explanation: 'Una relación binaria genera una partición del conjunto (clases de equivalencia [a]) si y solo si cumple simultáneamente con ser Reflexiva, Simétrica y Transitiva.'
+            },
+            {
+                id: 8,
+                char: 'L',
+                category: 'PRINCIPIO DEL PRODUCTO CARTESIANO (DIAPOSITIVAS)',
+                prompt: 'Para desactivar el reactor final se deben sincronizar |A| = 3 cristales kyber con |B| = 4 generadores de iones. Por la Regla del Producto de conjuntos |A × B|, ¿cuántos pares ordenados de enlace son posibles en total?',
+                options: [
+                    '|A| + |B| = 7 enlaces.',
+                    '|A × B| = |A| · |B| = 3 · 4 = 12 pares.',
+                    '4³ = 64 variaciones.'
+                ],
+                correct: 1,
+                formula: '|A × B| = |A| · |B| = 3 × 4 = 12',
+                explanation: 'El principio multiplicativo básico de conteo indica que si un primer evento posee n₁ posibilidades y un segundo n₂, la secuencia conjunta tiene n₁ · n₂ combinaciones.'
+            }
+        ];
+
+        const TARGET_PASSWORD = QUESTIONS_DB.map(q => q.char);
+        const TOTAL_LENGTH = TARGET_PASSWORD.length; // n = 8
+        const ALPHABET_SIZE = 36; // m = 36 (A-Z, 0-9)
+        const INITIAL_POSSIBILITIES = Math.pow(ALPHABET_SIZE, TOTAL_LENGTH); // 36^8 = 2,821,109,907,456
+
+        let currentQuestionIdx = 0;
+        let revealedLetters = Array(TOTAL_LENGTH).fill(null);
+        let answeredCurrent = false;
+
+        // Elementos del DOM
+        const passwordDisplay = document.getElementById('passwordDisplay');
+        const possibilitiesCount = document.getElementById('possibilitiesCount');
+        const calcFormula = document.getElementById('calcFormula');
+        const reductionPercent = document.getElementById('reductionPercent');
+        const hackProgressBar = document.getElementById('hackProgressBar');
+        const shieldIntegrity = document.getElementById('shieldIntegrity');
+        const stageCounter = document.getElementById('stageCounter');
+        const questionCategory = document.getElementById('questionCategory');
+        const questionPrompt = document.getElementById('questionPrompt');
+        const optionsContainer = document.getElementById('optionsContainer');
+        const feedbackPanel = document.getElementById('feedbackPanel');
+        const feedbackTitle = document.getElementById('feedbackTitle');
+        const feedbackExplanation = document.getElementById('feedbackExplanation');
+        const feedbackFormula = document.getElementById('feedbackFormula');
+        const statusMessage = document.getElementById('statusMessage');
+        const nextQuestionBtn = document.getElementById('nextQuestionBtn');
+        const jediSpeech = document.getElementById('jediSpeech');
+        const audioToggle = document.getElementById('audioToggle');
+        const audioText = document.getElementById('audioText');
+        const victoryModal = document.getElementById('victoryModal');
+        const restartBtn = document.getElementById('restartBtn');
+        const saberIndicator = document.getElementById('saberIndicator');
+
+        let saberHue = 135; // Verde
+        let hueDirection = 1;
+
+        function updateSaberColor() {
+            // Oscila suavemente entre 135 (Verde Luke) y 210 (Azul Anakin/Obi-Wan)
+            saberHue += 0.25 * hueDirection;
+            if (saberHue >= 215) {
+                saberHue = 215;
+                hueDirection = -1;
+            } else if (saberHue <= 130) {
+                saberHue = 130;
+                hueDirection = 1;
+            }
+
+            document.documentElement.style.setProperty('--saber-hue', saberHue);
+            if (saberHue < 170) {
+                saberIndicator.textContent = 'VERDE JEDI';
+                saberIndicator.className = 'font-pixel text-[10px] text-emerald-400 font-bold';
+            } else {
+                saberIndicator.textContent = 'AZUL GUARDIÁN';
+                saberIndicator.className = 'font-pixel text-[10px] text-cyan-400 font-bold';
+            }
+
+            requestAnimationFrame(updateSaberColor);
+        }
+        requestAnimationFrame(updateSaberColor);
+
+        const spaceCanvas = document.getElementById('spaceCanvas');
+        const spaceCtx = spaceCanvas.getContext('2d');
+        let stars = [];
+
+        function resizeSpace() {
+            spaceCanvas.width = window.innerWidth;
+            spaceCanvas.height = window.innerHeight;
+            stars = [];
+            const count = Math.floor((spaceCanvas.width * spaceCanvas.height) / 4500);
+            for (let i = 0; i < count; i++) {
+                stars.push({
+                    x: Math.random() * spaceCanvas.width,
+                    y: Math.random() * spaceCanvas.height,
+                    size: Math.random() < 0.8 ? 1.5 : 2.5,
+                    alpha: Math.random(),
+                    speed: 0.005 + Math.random() * 0.02
+                });
+            }
+        }
+        window.addEventListener('resize', resizeSpace);
+        resizeSpace();
+
+        function renderSpace() {
+            spaceCtx.fillStyle = '#030712';
+            spaceCtx.fillRect(0, 0, spaceCanvas.width, spaceCanvas.height);
+
+            // Resplandor ambiental de nebulosa sutil
+            const gradient = spaceCtx.createRadialGradient(
+                spaceCanvas.width * 0.8, spaceCanvas.height * 0.2, 50,
+                spaceCanvas.width * 0.8, spaceCanvas.height * 0.2, spaceCanvas.width * 0.7
+            );
+            gradient.addColorStop(0, `hsla(${saberHue}, 70%, 40%, 0.12)`);
+            gradient.addColorStop(1, 'transparent');
+            spaceCtx.fillStyle = gradient;
+            spaceCtx.fillRect(0, 0, spaceCanvas.width, spaceCanvas.height);
+
+            // Estrellas pixeladas
+            stars.forEach(st => {
+                st.alpha += st.speed;
+                if (st.alpha > 1 || st.alpha < 0.2) st.speed = -st.speed;
+                spaceCtx.fillStyle = `rgba(255, 255, 255, ${Math.max(0.1, st.alpha)})`;
+                spaceCtx.fillRect(Math.floor(st.x), Math.floor(st.y), st.size, st.size);
+            });
+
+            requestAnimationFrame(renderSpace);
+        }
+        requestAnimationFrame(renderSpace);
+
+        const jediCanvas = document.getElementById('jediCanvas');
+        const jediCtx = jediCanvas.getContext('2d');
+        jediCtx.imageSmoothingEnabled = false;
+
+        let jediState = 'idle'; // 'idle', 'happy', 'sad'
+        let jediAnimFrame = 0;
+
+        function setJediState(state, message) {
+            jediState = state;
+            if (message) jediSpeech.textContent = message;
+        }
+
+        function drawPixelRect(ctx, x, y, w, h, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+        }
+
+        function renderJedi() {
+            jediCtx.clearRect(0, 0, jediCanvas.width, jediCanvas.height);
+            const scale = 5; // Escala de píxeles
+            const bob = (jediState === 'idle') ? Math.sin(jediAnimFrame * 0.08) * 1.5 : 0;
+            const baseX = 20;
+            const baseY = 25 + bob;
+
+            // Colores del Jedi
+            const cCloakDark = '#451a03';
+            const cCloak = '#78350f';
+            const cTunic = '#d97706';
+            const cSkin = '#fcd34d';
+            const cLaptop = '#1e293b';
+            const cScreen = '#0f172a';
+            const cCode = `hsl(${saberHue}, 100%, 60%)`;
+            const cSaberBlade = `hsl(${saberHue}, 100%, 65%)`;
+            const cSaberCore = '#ffffff';
+
+            // Capa Jedi (Fondo)
+            drawPixelRect(jediCtx, (baseX + 3) * scale, (baseY + 5) * scale, 12 * scale, 14 * scale, cCloakDark);
+            drawPixelRect(jediCtx, (baseX + 2) * scale, (baseY + 7) * scale, 14 * scale, 12 * scale, cCloak);
+
+            // Cabeza y Capucha
+            drawPixelRect(jediCtx, (baseX + 5) * scale, (baseY + 2) * scale, 8 * scale, 7 * scale, cCloak);
+            drawPixelRect(jediCtx, (baseX + 6) * scale, (baseY + 4) * scale, 6 * scale, 5 * scale, cSkin);
+
+            // Rostro según estado
+            if (jediState === 'sad') {
+                // Ojos tristes (x_x o caídos)
+                drawPixelRect(jediCtx, (baseX + 7) * scale, (baseY + 5) * scale, 1 * scale, 1 * scale, '#1e1b4b');
+                drawPixelRect(jediCtx, (baseX + 10) * scale, (baseY + 5) * scale, 1 * scale, 1 * scale, '#1e1b4b');
+                // Boca triste
+                drawPixelRect(jediCtx, (baseX + 8) * scale, (baseY + 7) * scale, 2 * scale, 1 * scale, '#991b1b');
+            } else if (jediState === 'happy') {
+                // Ojos alegres (^ _ ^)
+                drawPixelRect(jediCtx, (baseX + 7) * scale, (baseY + 4) * scale, 1 * scale, 1 * scale, '#064e3b');
+                drawPixelRect(jediCtx, (baseX + 10) * scale, (baseY + 4) * scale, 1 * scale, 1 * scale, '#064e3b');
+                // Boca sonriente
+                drawPixelRect(jediCtx, (baseX + 8) * scale, (baseY + 6) * scale, 2 * scale, 1 * scale, '#059669');
+            } else {
+                // Ojos normales parpadeantes
+                const blink = (Math.floor(jediAnimFrame / 50) % 8 === 0);
+                if (!blink) {
+                    drawPixelRect(jediCtx, (baseX + 7) * scale, (baseY + 5) * scale, 1 * scale, 1 * scale, '#1e1b4b');
+                    drawPixelRect(jediCtx, (baseX + 10) * scale, (baseY + 5) * scale, 1 * scale, 1 * scale, '#1e1b4b');
+                }
+                drawPixelRect(jediCtx, (baseX + 8) * scale, (baseY + 7) * scale, 2 * scale, 1 * scale, '#b45309');
+            }
+
+            // Túnica interna
+            drawPixelRect(jediCtx, (baseX + 6) * scale, (baseY + 9) * scale, 6 * scale, 7 * scale, cTunic);
+
+            // Laptop del Jedi Coder
+            drawPixelRect(jediCtx, (baseX + 4) * scale, (baseY + 13) * scale, 10 * scale, 2 * scale, cLaptop);
+            drawPixelRect(jediCtx, (baseX + 5) * scale, (baseY + 10) * scale, 8 * scale, 3 * scale, cScreen);
+            // Líneas de código en la pantalla
+            const codeToggle = (Math.floor(jediAnimFrame / 10) % 2 === 0);
+            drawPixelRect(jediCtx, (baseX + 6) * scale, (baseY + 11) * scale, (codeToggle ? 6 : 4) * scale, 1 * scale, cCode);
+
+            if (jediState === 'happy') {
+                // Levanta el sable triunfante en alto
+                drawPixelRect(jediCtx, (baseX + 13) * scale, (baseY + 5) * scale, 2 * scale, 4 * scale, '#94a3b8'); // Mango
+                // Hoja del sable extendida hacia arriba
+                drawPixelRect(jediCtx, (baseX + 13) * scale, (baseY - 7) * scale, 2 * scale, 12 * scale, cSaberBlade);
+                drawPixelRect(jediCtx, (baseX + 13.5) * scale, (baseY - 6) * scale, 1 * scale, 11 * scale, cSaberCore);
+                // Chispas de la Fuerza
+                drawPixelRect(jediCtx, (baseX + 11) * scale, (baseY - 8) * scale, 1.5 * scale, 1.5 * scale, '#fef08a');
+                drawPixelRect(jediCtx, (baseX + 16) * scale, (baseY - 4) * scale, 1.5 * scale, 1.5 * scale, '#fef08a');
+            } else if (jediState === 'sad') {
+                // Sable apagado o en el suelo
+                drawPixelRect(jediCtx, (baseX + 14) * scale, (baseY + 14) * scale, 4 * scale, 2 * scale, '#475569');
+                // Humo de error
+                drawPixelRect(jediCtx, (baseX + 12) * scale, (baseY + 3) * scale, 2 * scale, 2 * scale, '#64748b');
+            } else {
+                // Sable encendido en reposo a su lado
+                drawPixelRect(jediCtx, (baseX + 14) * scale, (baseY + 9) * scale, 2 * scale, 4 * scale, '#94a3b8');
+                drawPixelRect(jediCtx, (baseX + 14) * scale, (baseY + 1) * scale, 2 * scale, 8 * scale, cSaberBlade);
+                drawPixelRect(jediCtx, (baseX + 14.5) * scale, (baseY + 2) * scale, 1 * scale, 6 * scale, cSaberCore);
+            }
+
+            jediAnimFrame++;
+            requestAnimationFrame(renderJedi);
+        }
+        requestAnimationFrame(renderJedi);
+
+        function formatNumber(num) {
+            return num.toLocaleString('en-US');
+        }
+
+        function updateHUD() {
+            // Renderizar ranuras de contraseña
+            passwordDisplay.innerHTML = '';
+            for (let i = 0; i < TOTAL_LENGTH; i++) {
+                const slot = document.createElement('div');
+                const isRevealed = revealedLetters[i] !== null;
+                const isCurrent = (i === currentQuestionIdx && !isRevealed);
+
+                slot.className = `w-7 h-9 sm:w-10 sm:h-12 flex items-center justify-center font-pixel text-xs sm:text-base border-2 rounded ${
+                    isRevealed
+                        ? 'border-emerald-400 bg-emerald-950/80 text-emerald-300 shadow-[0_0_10px_rgba(0,255,102,0.5)]'
+                        : isCurrent
+                        ? 'border-yellow-400 bg-yellow-950/40 text-yellow-300 animate-pulse'
+                        : 'border-slate-700 bg-slate-900/60 text-slate-600'
+                }`;
+
+                slot.textContent = isRevealed ? revealedLetters[i] : (isCurrent ? '?' : '_');
+                passwordDisplay.appendChild(slot);
+            }
+
+            const solvedCount = revealedLetters.filter(x => x !== null).length;
+            const remainingChars = TOTAL_LENGTH - solvedCount;
+            const remainingPossibilities = Math.pow(ALPHABET_SIZE, remainingChars);
+
+            // Fórmula mostrada según documento de trabajo colaborativo:
+            if (solvedCount === 0) {
+                calcFormula.textContent = `mⁿ = 36⁸`;
+            } else {
+                calcFormula.textContent = `1 · 36^(${TOTAL_LENGTH} - ${solvedCount}) = 36^${remainingChars}`;
+            }
+
+            possibilitiesCount.textContent = formatNumber(remainingPossibilities);
+
+            // Reducción y colapso porcentual
+            const reduction = ((1 - (remainingPossibilities / INITIAL_POSSIBILITIES)) * 100);
+            reductionPercent.textContent = `COLAPSO: ${reduction.toFixed(reduction > 99.99 && reduction < 100 ? 4 : 2)}%`;
+
+            // Barra de progreso y estado de escudo
+            const progress = (solvedCount / TOTAL_LENGTH) * 100;
+            hackProgressBar.style.width = `${progress}%`;
+            shieldIntegrity.textContent = `Escudos Imperiales: ${Math.max(0, 100 - Math.round(progress))}%`;
+
+            stageCounter.textContent = `FIREWALL ${Math.min(currentQuestionIdx + 1, TOTAL_LENGTH)}/${TOTAL_LENGTH}`;
+        }
+
+        function loadQuestion(index) {
+            answeredCurrent = false;
+            nextQuestionBtn.disabled = true;
+            feedbackPanel.classList.add('hidden');
+            statusMessage.textContent = 'Selecciona la opción teórica correcta para vulnerar el firewall.';
+            statusMessage.className = 'text-xs text-slate-400 font-mono';
+
+            const q = QUESTIONS_DB[index];
+            questionCategory.textContent = q.category;
+            questionPrompt.innerHTML = `<span class="text-yellow-400 font-pixel text-xs mr-2">[FW-${q.id}]</span> ${q.prompt}`;
+
+            optionsContainer.innerHTML = '';
+            q.options.forEach((optText, optIdx) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left p-3.5 sm:p-4 rounded border-2 border-slate-700 bg-slate-900/90 hover:bg-slate-800 text-slate-200 transition-all pixel-btn flex items-center justify-between group';
+                btn.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="w-6 h-6 rounded border border-slate-600 flex items-center justify-center font-pixel text-[10px] text-cyan-300 group-hover:border-cyan-400">
+                            ${String.fromCharCode(65 + optIdx)}
+                        </span>
+                        <span class="group-hover:text-cyan-200">${optText}</span>
+                    </div>
+                `;
+
+                btn.addEventListener('click', () => handleOptionSelect(optIdx, btn));
+                optionsContainer.appendChild(btn);
+            });
+
+            setJediState('idle', 'Analizando estructura del firewall imperial...');
+            updateHUD();
+        }
+
+        function handleOptionSelect(selectedIdx, btnElement) {
+            if (answeredCurrent) return;
+
+            const q = QUESTIONS_DB[currentQuestionIdx];
+            const isCorrect = (selectedIdx === q.correct);
+
+            if (isCorrect) {
+                // Acierto: revelar carácter y desbloquear avance
+                answeredCurrent = true;
+                SoundFX.playSuccess();
+                revealedLetters[currentQuestionIdx] = q.char;
+
+                // Estilo botón acertado
+                btnElement.classList.remove('border-slate-700', 'bg-slate-900/90');
+                btnElement.classList.add('border-emerald-400', 'bg-emerald-950/80', 'text-emerald-200');
+
+                // Deshabilitar otros botones
+                Array.from(optionsContainer.children).forEach((b, idx) => {
+                    if (idx !== selectedIdx) b.disabled = true;
+                });
+
+                // Panel explicativo
+                feedbackTitle.innerHTML = `<span class="text-emerald-400 font-pixel">✔ ¡FIREWALL VULNERADO! CARÁCTER DESBLOQUEADO: '${q.char}'</span>`;
+                feedbackExplanation.textContent = q.explanation;
+                feedbackFormula.textContent = q.formula;
+                feedbackPanel.classList.remove('hidden');
+
+                statusMessage.innerHTML = `<span class="text-emerald-300 font-bold">¡Sector despejado! Pulsa "SIGUIENTE FIREWALL" para continuar.</span>`;
+                nextQuestionBtn.disabled = false;
+
+                setJediState('happy', '¡La Fuerza está con nosotros! El espacio de claves se redujo exponencialmente.');
+                updateHUD();
+            } else {
+                // Error: Perturbación en la Fuerza
+                SoundFX.playError();
+                btnElement.classList.add('border-red-500', 'bg-red-950/60', 'text-red-300');
+                statusMessage.innerHTML = `<span class="text-red-400">❌ Parámetro rechazado por el núcleo. Revisa la definición teórica e intenta de nuevo.</span>`;
+
+                setJediState('sad', '¡Perturbación en la Fuerza! La hipótesis es incorrecta. Inténtalo otra vez.');
+                setTimeout(() => {
+                    btnElement.classList.remove('border-red-500', 'bg-red-950/60', 'text-red-300');
+                }, 1200);
+            }
+        }
+
+        nextQuestionBtn.addEventListener('click', () => {
+            if (!answeredCurrent) return;
+            SoundFX.playLaser();
+
+            if (currentQuestionIdx < QUESTIONS_DB.length - 1) {
+                currentQuestionIdx++;
+                loadQuestion(currentQuestionIdx);
+            } else {
+                // Todas las preguntas completadas -> Victoria épica
+                triggerDeathStarDestruction();
+            }
+        });
+
+        const explosionCanvas = document.getElementById('explosionCanvas');
+        const expCtx = explosionCanvas.getContext('2d');
+        let explosionAnimId = null;
+
+        function triggerDeathStarDestruction() {
+            SoundFX.playExplosion();
+            victoryModal.classList.remove('hidden');
+            victoryModal.classList.add('flex');
+
+            explosionCanvas.width = 600;
+            explosionCanvas.height = 360;
+
+            let frame = 0;
+            const particles = [];
+
+            // Generar partículas de escombros de la Estrella de la Muerte
+            for (let i = 0; i < 180; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 1 + Math.random() * 8;
+                particles.push({
+                    x: explosionCanvas.width / 2,
+                    y: explosionCanvas.height / 2,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    size: 2 + Math.random() * 5,
+                    color: Math.random() < 0.4 ? '#ffffff' : Math.random() < 0.7 ? '#f97316' : '#22c55e',
+                    alpha: 1
+                });
+            }
+
+            function drawDeathStarScene() {
+                expCtx.fillStyle = '#050811';
+                expCtx.fillRect(0, 0, explosionCanvas.width, explosionCanvas.height);
+
+                const cx = explosionCanvas.width / 2;
+                const cy = explosionCanvas.height / 2;
+                const r = 70;
+
+                if (frame < 30) {
+                    // Estrella de la Muerte antes de reventar
+                    expCtx.save();
+                    expCtx.fillStyle = '#64748b';
+                    expCtx.beginPath();
+                    expCtx.arc(cx, cy, r, 0, Math.PI * 2);
+                    expCtx.fill();
+
+                    // Trinchera ecuatorial
+                    expCtx.strokeStyle = '#1e293b';
+                    expCtx.lineWidth = 4;
+                    expCtx.beginPath();
+                    expCtx.moveTo(cx - r, cy);
+                    expCtx.lineTo(cx + r, cy);
+                    expCtx.stroke();
+
+                    // Disco superláser
+                    expCtx.fillStyle = '#334155';
+                    expCtx.beginPath();
+                    expCtx.arc(cx + 25, cy - 25, 18, 0, Math.PI * 2);
+                    expCtx.fill();
+
+                    // Resplandor de sobrecarga crítica
+                    const glowRadius = Math.max(1, frame * 4);
+                    expCtx.fillStyle = `rgba(0, 255, 120, ${frame / 30})`;
+                    expCtx.beginPath();
+                    expCtx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
+                    expCtx.fill();
+                    expCtx.restore();
+                } else {
+                    // Onda expansiva de choque
+                    const shockRadius = (frame - 30) * 9;
+                    if (shockRadius < explosionCanvas.width) {
+                        expCtx.strokeStyle = `rgba(0, 212, 255, ${Math.max(0, 1 - (frame - 30) / 45)})`;
+                        expCtx.lineWidth = 6;
+                        expCtx.beginPath();
+                        expCtx.arc(cx, cy, shockRadius, 0, Math.PI * 2);
+                        expCtx.stroke();
+                    }
+
+                    // Partículas de escombros pixelados
+                    particles.forEach(p => {
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        p.alpha -= 0.012;
+                        if (p.alpha > 0) {
+                            expCtx.fillStyle = p.color;
+                            expCtx.globalAlpha = Math.max(0, p.alpha);
+                            expCtx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
+                        }
+                    });
+                    expCtx.globalAlpha = 1.0;
+                }
+
+                frame++;
+                if (frame < 120) {
+                    explosionAnimId = requestAnimationFrame(drawDeathStarScene);
+                }
+            }
+
+            drawDeathStarScene();
+        }
+
+        restartBtn.addEventListener('click', () => {
+            if (explosionAnimId) cancelAnimationFrame(explosionAnimId);
+            victoryModal.classList.add('hidden');
+            victoryModal.classList.remove('flex');
+            currentQuestionIdx = 0;
+            revealedLetters = Array(TOTAL_LENGTH).fill(null);
+            loadQuestion(0);
+        });
+
+        audioToggle.addEventListener('click', () => {
+            SoundFX.enabled = !SoundFX.enabled;
+            audioText.textContent = SoundFX.enabled ? 'SONIDO: ON' : 'SONIDO: OFF';
+            audioToggle.classList.toggle('text-slate-500', !SoundFX.enabled);
+            audioToggle.classList.toggle('text-emerald-300', SoundFX.enabled);
+        });
+
+        // Inicializar la primera pregunta al cargar
+        window.addEventListener('load', () => {
+            loadQuestion(0);
+        });
+    </script>
+</body>
+</html>
